@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import { realExec, type Exec } from './runners/types.ts';
 
 export interface Git {
@@ -51,9 +51,18 @@ export class GitCli implements Git {
     await this.git(worktree, ['push', '-u', 'origin', branch, '--force-with-lease']);
   }
 
+  // En Windows algún proceso (antivirus, indexador, un preview que se cierra) puede
+  // bloquear archivos unos segundos. Se reintenta y, al final, se borra a mano y se poda.
   async removeWorktree(repoPath: string, worktree: string) {
-    if (!existsSync(worktree)) return;
-    await this.git(repoPath, ['worktree', 'remove', '--force', worktree]);
+    for (let attempt = 1; attempt <= 3 && existsSync(worktree); attempt++) {
+      try {
+        await this.git(repoPath, ['worktree', 'remove', '--force', worktree]);
+      } catch {
+        await new Promise((r) => setTimeout(r, 3000 * attempt));
+      }
+    }
+    if (existsSync(worktree)) rmSync(worktree, { recursive: true, force: true, maxRetries: 5, retryDelay: 1000 });
+    await this.git(repoPath, ['worktree', 'prune']);
   }
 }
 

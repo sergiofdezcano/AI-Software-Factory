@@ -324,7 +324,7 @@ export async function runPipeline(deps: PipelineDeps, ctx: PipelineContext): Pro
             decision: state.verdict!.decision,
             findings: state.findings?.kept ?? [],
           });
-          await git.push(worktree, state.branch!);
+          if (!state.outcome?.url) await git.push(worktree, state.branch!);
           if (!state.outcome?.url) {
             const url = await github.createPR(ctx.repo, {
               head: state.branch!,
@@ -345,7 +345,9 @@ export async function runPipeline(deps: PipelineDeps, ctx: PipelineContext): Pro
             save();
           }
           const url = state.outcome.url!;
-          if (blockers.length === 0) {
+          if (state.outcome.announced) {
+            // Ya entregado en un intento anterior; solo queda limpiar.
+          } else if (blockers.length === 0) {
             await github.mergePR(ctx.repo, url);
             state.outcome = { kind: 'merged', url };
             await github.setStatus(ctx.repo, ctx.issue, 'factory:merged');
@@ -358,7 +360,13 @@ export async function runPipeline(deps: PipelineDeps, ctx: PipelineContext): Pro
               `${MARKER}\n👀 PR lista para que la revises: ${url}\n\nNo se mergeó sola porque:\n${blockers.map((b) => `- ${b}`).join('\n')}`,
             );
           }
-          await git.removeWorktree(ctx.repoPath, worktree);
+          state.outcome.announced = true;
+          save();
+          try {
+            await git.removeWorktree(ctx.repoPath, worktree);
+          } catch (e) {
+            log(`Aviso: no se pudo borrar el worktree (${(e as Error).message}). Se puede borrar a mano.`);
+          }
           go('done');
           return 'done';
         }

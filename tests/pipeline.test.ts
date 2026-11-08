@@ -319,3 +319,30 @@ describe('autoaprobación', () => {
     expect(gh.merged).toHaveLength(1);
   });
 });
+
+describe('entrega robusta', () => {
+  it('si falla la limpieza, el run termina igual y no repite comentarios al reintentar', async () => {
+    ctx.autoApproveSpec = true;
+    git.removeWorktree = async () => {
+      throw new Error('Permission denied');
+    };
+    expect(await runPipeline(deps(makeAgents()), ctx)).toBe('done');
+    const comments = gh.comments.length;
+    expect(await runPipeline(deps(makeAgents()), ctx)).toBe('done');
+    expect(gh.comments.length).toBe(comments);
+    expect(gh.merged).toHaveLength(1);
+  });
+
+  it('un ship interrumpido tras anunciar solo limpia', async () => {
+    ctx.autoApproveSpec = true;
+    const agents = makeAgents();
+    await runPipeline(deps(agents), ctx);
+    const s = ctx.store.load();
+    s.step = 'ship';
+    ctx.store.save(s);
+    const before = gh.comments.length;
+    expect(await runPipeline(deps(agents), ctx)).toBe('done');
+    expect(gh.comments.length).toBe(before);
+    expect(gh.merged).toHaveLength(1);
+  });
+});

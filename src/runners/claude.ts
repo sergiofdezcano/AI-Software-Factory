@@ -54,6 +54,10 @@ export class ClaudeRunner implements AgentRunner {
       '--max-turns',
       String(this.opts.maxTurns ?? (write ? 200 : 60)),
       '--no-session-persistence',
+      // Sin servidores MCP: contexto aislado y sin procesos huérfanos que bloqueen el worktree.
+      '--strict-mcp-config',
+      '--mcp-config',
+      '{"mcpServers":{}}',
     ];
     const r = await this.exec(this.opts.bin ?? 'claude', args, { cwd: call.cwd, input: call.prompt, timeoutMs: call.timeoutMs });
     const raw = r.stdout;
