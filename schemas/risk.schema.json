@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["level", "reason"],
+  "properties": {
+    "level": { "enum": ["low", "high"] },
+    "reason": { "type": "string", "minLength": 1 }
+  }
+}

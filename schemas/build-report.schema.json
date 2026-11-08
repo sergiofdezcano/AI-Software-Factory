@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "criteria", "notes"],
+  "properties": {
+    "summary": { "type": "string", "minLength": 1 },
+    "criteria": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "status", "evidence"],
+        "properties": {
+          "id": { "type": "string" },
+          "status": { "enum": ["done", "not_done"] },
+          "evidence": { "type": "string" }
+        }
+      }
+    },
+    "notes": { "type": "string" }
+  }
+}

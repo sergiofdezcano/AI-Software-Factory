@@ -1,0 +1,49 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "check",
+    "low_risk_paths",
+    "default_branch"
+  ],
+  "properties": {
+    "check": {
+      "type": "string",
+      "minLength": 1
+    },
+    "screenshots": {
+      "type": "string"
+    },
+    "low_risk_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "default_branch": {
+      "type": "string",
+      "minLength": 1
+    },
+    "setup": {
+      "type": "string"
+    },
+    "timeouts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "agent_minutes": {
+          "type": "number",
+          "minimum": 1
+        },
+        "builder_minutes": {
+          "type": "number",
+          "minimum": 1
+        },
+        "check_minutes": {
+          "type": "number",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}
