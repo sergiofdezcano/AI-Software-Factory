@@ -1,7 +1,9 @@
 # Apps sobre las que trabaja la fábrica.
 # approver_login: usuario de GitHub cuyos /approve y /revise cuentan.
+# auto_approve_spec: true para que la spec no espere tu /approve (queda registrado en el issue).
 approver_login: sergiofdezcano
 apps:
   landing:
     repo: sergiofdezcano/Serg4Cano-Landing-Page
     path: C:/Users/sergi/Serg4Cano-Landing-Page
+    auto_approve_spec: true

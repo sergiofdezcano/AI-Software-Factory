@@ -28,7 +28,11 @@ npm install
 npm run factory -- run landing 12            # avanza el issue #12 todo lo posible
 npm run factory -- run landing 12 --dry-run  # igual, pero sin escribir en GitHub ni hacer push
 npm run factory -- status landing 12
+npm run factory -- watch                     # procesa en bucle todos los issues con la etiqueta factory (cada 5 min)
+npm run factory -- watch --once              # una sola pasada
 ```
+
+**Modo automático.** Con `auto_approve_spec: true` en `apps.yml`, la spec se aprueba sola y queda anotado en el issue. Lo que no sea de bajo riesgo sigue acabando en PR. Si Codex no tiene cuota, la revisión de seguridad la hace Claude y también queda anotado.
 
 `run` se puede repetir siempre: retoma desde el último paso guardado en `runs/landing-12/`. Si está esperando tu `/approve`, termina con `Resultado: waiting`. Si se agota la cuota de Claude o Codex, queda en `paused` y el siguiente `run` sigue donde estaba. Para empezar de cero un issue, borra `runs/<app>-<issue>/`.
 

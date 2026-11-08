@@ -7,6 +7,7 @@ describe('DryRunGitHub', () => {
     let writes = 0;
     const inner: GitHub = {
       getIssue: async () => ({ title: 't', body: 'b', labels: [], comments: [] }),
+      listIssues: async () => [],
       comment: async () => void writes++,
       setStatus: async () => void writes++,
       createPR: async () => (writes++, 'u'),
@@ -56,5 +57,17 @@ describe('GhCli', () => {
     const edit = calls.find((a) => a[1] === 'edit')!;
     expect(edit[edit.indexOf('--add-label') + 1]).toBe('factory:awaiting-spec');
     expect(edit[edit.indexOf('--remove-label') + 1]).toBe('factory:spec');
+  });
+});
+
+describe('GhCli.listIssues', () => {
+  it('devuelve número y etiquetas de los issues abiertos con la etiqueta', async () => {
+    const calls: string[][] = [];
+    const exec: Exec = async (_c, args) => {
+      calls.push(args);
+      return { stdout: JSON.stringify([{ number: 2, labels: [{ name: 'factory' }, { name: 'factory:pr' }] }]), stderr: '', exitCode: 0, timedOut: false };
+    };
+    expect(await new GhCli(exec).listIssues('o/r', 'factory')).toEqual([{ number: 2, labels: ['factory', 'factory:pr'] }]);
+    expect(calls[0]).toContain('--label');
   });
 });

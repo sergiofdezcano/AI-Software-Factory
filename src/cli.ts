@@ -6,31 +6,37 @@ import { parseArgs } from 'node:util';
 import { ShellChecks } from './checks.ts';
 import { getApp, loadAppConfig, loadApps } from './config.ts';
 import { DryRunGit, GitCli } from './git.ts';
-import { DryRunGitHub, GhCli } from './github.ts';
-import { runPipeline, type Agents } from './pipeline.ts';
+import { DryRunGitHub, GhCli, TRIGGER_LABEL, type GitHub } from './github.ts';
+import { runPipeline, type Agents, type PipelineResult } from './pipeline.ts';
+import { MARKER } from './render.ts';
 import { ClaudeRunner } from './runners/claude.ts';
 import { CodexRunner } from './runners/codex.ts';
+import { FallbackRunner } from './runners/fallback.ts';
 import { RunStore } from './state.ts';
+import type { AppsFile } from './types.ts';
+import { pendingIssues } from './watch.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const USAGE = `Uso:
-  factory run <app> <issue> [--dry-run]   Avanza la tarea todo lo posible
-  factory status <app> <issue>            Muestra el estado guardado
+  factory run <app> <issue> [--dry-run]     Avanza un issue todo lo posible
+  factory watch [--interval 300] [--once]   Procesa en bucle los issues con la etiqueta "factory"
+  factory status <app> <issue>              Muestra el estado guardado
 
 Modelos (variables de entorno opcionales):
   FACTORY_MODEL_BIG     por defecto "opus"   (spec writer, builder, approver, riesgo)
-  FACTORY_MODEL_REVIEW  por defecto "sonnet" (revisor de código)
+  FACTORY_MODEL_REVIEW  por defecto "sonnet" (revisor de código y reserva del de seguridad)
   FACTORY_MODEL_CODEX   por defecto el de ~/.codex/config.toml (revisor de seguridad)`;
 
-function makeAgents(): Agents {
+function makeAgents(onFallback: (note: string) => void): Agents {
   const big = process.env.FACTORY_MODEL_BIG ?? 'opus';
   const review = process.env.FACTORY_MODEL_REVIEW ?? 'sonnet';
   return {
     specWriter: new ClaudeRunner({ model: big }),
     builder: new ClaudeRunner({ model: big }),
     reviewerCode: new ClaudeRunner({ model: review }),
-    reviewerSecurity: new CodexRunner({ model: process.env.FACTORY_MODEL_CODEX }),
+    // Codex aporta otra familia de modelos; si no tiene cuota, revisa Claude y queda anotado.
+    reviewerSecurity: new FallbackRunner(new CodexRunner({ model: process.env.FACTORY_MODEL_CODEX }), new ClaudeRunner({ model: review }), onFallback),
     approver: new ClaudeRunner({ model: big }),
     riskClassifier: new ClaudeRunner({ model: big }),
   };
@@ -56,56 +62,112 @@ function acquireLock(file: string): () => void {
   return () => rmSync(file, { force: true });
 }
 
-async function main() {
-  const { positionals, values } = parseArgs({ allowPositionals: true, options: { 'dry-run': { type: 'boolean', default: false } } });
-  const [cmd, appName, issueArg] = positionals;
-  const issue = Number(issueArg);
-  if (!cmd || !appName || !Number.isInteger(issue) || issue <= 0) {
-    console.log(USAGE);
-    process.exit(cmd ? 1 : 0);
-  }
+const log = (m: string) => console.log(`[${new Date().toLocaleTimeString('es-ES')}] ${m}`);
 
-  const apps = loadApps(join(ROOT, 'apps.yml'));
+async function runOne(apps: AppsFile, appName: string, issue: number, dry: boolean): Promise<PipelineResult> {
   const app = getApp(apps, appName);
   const runDir = join(ROOT, 'runs', `${appName}-${issue}`);
-  const store = new RunStore(runDir);
+  const realGitHub = new GhCli();
+  const github: GitHub = dry ? new DryRunGitHub(realGitHub, log) : realGitHub;
+  const notes: string[] = [];
+  log(`${appName}#${issue}: empiezo`);
+  const result = await runPipeline(
+    {
+      github,
+      git: dry ? new DryRunGit(new GitCli(), log) : new GitCli(),
+      checks: new ShellChecks({ FACTORY_EVIDENCE_DIR: join(runDir, 'evidence') }),
+      agents: makeAgents((n) => {
+        notes.push(n);
+        log(n);
+      }),
+      now: () => new Date().toISOString(),
+      log,
+    },
+    {
+      repo: app.repo,
+      repoPath: app.path,
+      issue,
+      approverLogin: apps.approver_login,
+      config: loadAppConfig(app.path),
+      store: new RunStore(runDir),
+      worktree: join(runDir, 'worktree'),
+      limits: { specRevisions: 3, buildRounds: 3 },
+      autoApproveSpec: app.auto_approve_spec === true,
+    },
+  );
+  if (notes.length) {
+    await github.comment(app.repo, issue, `${MARKER}\nℹ️ Avisos de esta ejecución:\n${[...new Set(notes)].map((n) => `- ${n}`).join('\n')}`);
+  }
+  log(`${appName}#${issue}: ${result}`);
+  return result;
+}
+
+async function watch(apps: AppsFile, intervalSec: number, once: boolean) {
+  const github = new GhCli();
+  for (;;) {
+    for (const appName of Object.keys(apps.apps)) {
+      try {
+        const issues = pendingIssues(await github.listIssues(apps.apps[appName].repo, TRIGGER_LABEL));
+        for (const issue of issues) {
+          try {
+            await runOne(apps, appName, issue, false);
+          } catch (e) {
+            log(`${appName}#${issue}: error, se reintentará: ${e instanceof Error ? e.message : e}`);
+          }
+        }
+      } catch (e) {
+        log(`${appName}: no pude listar issues: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+    if (once) return;
+    await new Promise((r) => setTimeout(r, intervalSec * 1000));
+  }
+}
+
+async function main() {
+  const { positionals, values } = parseArgs({
+    allowPositionals: true,
+    options: {
+      'dry-run': { type: 'boolean', default: false },
+      interval: { type: 'string', default: '300' },
+      once: { type: 'boolean', default: false },
+    },
+  });
+  const [cmd, appName, issueArg] = positionals;
+  const apps = loadApps(join(ROOT, 'apps.yml'));
+  mkdirSync(join(ROOT, 'runs'), { recursive: true });
+
+  if (cmd === 'watch') {
+    const release = acquireLock(join(ROOT, 'runs', '.lock'));
+    process.on('SIGINT', () => {
+      release();
+      process.exit(130);
+    });
+    try {
+      log(`Vigilando ${Object.keys(apps.apps).join(', ')} cada ${values.interval} s`);
+      await watch(apps, Number(values.interval), values.once);
+    } finally {
+      release();
+    }
+    return;
+  }
+
+  const issue = Number(issueArg);
+  if (!cmd || !appName || !Number.isInteger(issue) || issue <= 0 || !['run', 'status'].includes(cmd)) {
+    console.log(USAGE);
+    process.exitCode = cmd ? 1 : 0;
+    return;
+  }
 
   if (cmd === 'status') {
-    const s = store.load();
+    const s = new RunStore(join(ROOT, 'runs', `${appName}-${issue}`)).load();
     console.log(JSON.stringify({ step: s.step, specRevisions: s.specRevisions, buildRounds: s.buildRounds, paused: s.paused, outcome: s.outcome }, null, 2));
     return;
   }
-  if (cmd !== 'run') {
-    console.log(USAGE);
-    process.exit(1);
-  }
 
-  const dry = values['dry-run'];
-  const log = (m: string) => console.log(m);
-  mkdirSync(join(ROOT, 'runs'), { recursive: true });
   const release = acquireLock(join(ROOT, 'runs', '.lock'));
   try {
-    const result = await runPipeline(
-      {
-        github: dry ? new DryRunGitHub(new GhCli(), log) : new GhCli(),
-        git: dry ? new DryRunGit(new GitCli(), log) : new GitCli(),
-        checks: new ShellChecks({ FACTORY_EVIDENCE_DIR: join(runDir, 'evidence') }),
-        agents: makeAgents(),
-        now: () => new Date().toISOString(),
-        log,
-      },
-      {
-        repo: app.repo,
-        repoPath: app.path,
-        issue,
-        approverLogin: apps.approver_login,
-        config: loadAppConfig(app.path),
-        store,
-        worktree: join(runDir, 'worktree'),
-        limits: { specRevisions: 3, buildRounds: 3 },
-      },
-    );
-    console.log(`Resultado: ${result}`);
+    const result = await runOne(apps, appName, issue, values['dry-run']);
     process.exitCode = result === 'stuck' ? 2 : 0;
   } finally {
     release();
