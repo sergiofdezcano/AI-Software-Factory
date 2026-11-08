@@ -89,3 +89,12 @@ describe('CodexRunner', () => {
     await expect(new CodexRunner({ exec }).run(call)).rejects.toBeInstanceOf(QuotaError);
   });
 });
+
+describe('toOpenAISchema', () => {
+  it('quita minLength en profundidad y deja lo demás', async () => {
+    const { toOpenAISchema } = await import('../src/runners/codex.ts');
+    const out = toOpenAISchema({ type: 'object', properties: { a: { type: 'string', minLength: 1 }, b: { type: 'array', items: { type: 'string', minLength: 2 } } } });
+    expect(JSON.stringify(out)).not.toContain('minLength');
+    expect(out).toEqual({ type: 'object', properties: { a: { type: 'string' }, b: { type: 'array', items: { type: 'string' } } } });
+  });
+});

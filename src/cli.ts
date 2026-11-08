@@ -89,7 +89,7 @@ async function main() {
       {
         github: dry ? new DryRunGitHub(new GhCli(), log) : new GhCli(),
         git: dry ? new DryRunGit(new GitCli(), log) : new GitCli(),
-        checks: new ShellChecks(),
+        checks: new ShellChecks({ FACTORY_EVIDENCE_DIR: join(runDir, 'evidence') }),
         agents: makeAgents(),
         now: () => new Date().toISOString(),
         log,

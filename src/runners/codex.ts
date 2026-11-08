@@ -4,6 +4,21 @@ import { join } from 'node:path';
 import { loadSchema } from '../schema.ts';
 import { AgentError, QUOTA_PATTERN, QuotaError, parseJsonLoose, realExec, type AgentCall, type AgentOutput, type AgentRunner, type Exec } from './types.ts';
 
+// El modo estricto de OpenAI no admite todas las palabras clave de JSON Schema.
+// Se quitan aquí; Ajv las sigue comprobando al validar la salida.
+const UNSUPPORTED = new Set(['minLength', 'maxLength']);
+export function toOpenAISchema(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(toOpenAISchema);
+  if (schema && typeof schema === 'object') {
+    return Object.fromEntries(
+      Object.entries(schema)
+        .filter(([k]) => !UNSUPPORTED.has(k))
+        .map(([k, v]) => [k, toOpenAISchema(v)]),
+    );
+  }
+  return schema;
+}
+
 export interface CodexRunnerOptions {
   model?: string; // si se omite, el de ~/.codex/config.toml
   exec?: Exec;
@@ -26,7 +41,7 @@ export class CodexRunner implements AgentRunner {
     try {
       const schemaFile = join(dir, 'schema.json');
       const outFile = join(dir, 'out.json');
-      writeFileSync(schemaFile, JSON.stringify(loadSchema(call.schema)));
+      writeFileSync(schemaFile, JSON.stringify(toOpenAISchema(loadSchema(call.schema))));
       const args = ['exec', '--sandbox', 'read-only', '--ephemeral', '--skip-git-repo-check', '--color', 'never', '-C', call.cwd, '--output-schema', schemaFile, '-o', outFile];
       if (this.opts.model) args.push('-m', this.opts.model);
       args.push('-');
