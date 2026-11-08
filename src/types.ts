@@ -88,6 +88,8 @@ export interface CheckResult {
 export interface AppConfig {
   check: string;
   screenshots?: string;
+  setup?: string; // p. ej. npm ci, se ejecuta al crear el worktree
+  timeouts?: { agent_minutes?: number; builder_minutes?: number; check_minutes?: number };
   low_risk_paths: string[];
   default_branch: string;
 }
