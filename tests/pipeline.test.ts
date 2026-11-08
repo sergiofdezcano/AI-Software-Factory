@@ -25,6 +25,9 @@ class FakeGitHub implements GitHub {
   async getIssue() {
     return structuredClone(this.issue);
   }
+  async listIssues() {
+    return [];
+  }
   async comment(_r: string, _i: number, body: string) {
     this.comments.push(body);
   }
@@ -303,6 +306,16 @@ describe('pipeline', () => {
     gh.reply('/approve');
     await runPipeline(deps(agents), ctx);
     expect(await runPipeline(deps(agents), ctx)).toBe('done');
+    expect(gh.merged).toHaveLength(1);
+  });
+});
+
+describe('autoaprobación', () => {
+  it('con autoApproveSpec la spec se aprueba sola y queda registrado en el issue', async () => {
+    ctx.autoApproveSpec = true;
+    const agents = makeAgents();
+    expect(await runPipeline(deps(agents), ctx)).toBe('done');
+    expect(gh.comments.some((c) => c.includes('aprobada automáticamente'))).toBe(true);
     expect(gh.merged).toHaveLength(1);
   });
 });

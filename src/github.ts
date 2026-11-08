@@ -23,6 +23,7 @@ export interface Issue {
 
 export interface GitHub {
   getIssue(repo: string, issue: number): Promise<Issue>;
+  listIssues(repo: string, label: string): Promise<{ number: number; labels: string[] }[]>;
   comment(repo: string, issue: number, body: string): Promise<void>;
   setStatus(repo: string, issue: number, label: StatusLabel): Promise<void>;
   createPR(repo: string, pr: { head: string; base: string; title: string; body: string }): Promise<string>;
@@ -67,6 +68,11 @@ export class GhCli implements GitHub {
     };
   }
 
+  async listIssues(repo: string, label: string) {
+    const out = await this.gh(['issue', 'list', '-R', repo, '--label', label, '--state', 'open', '--limit', '100', '--json', 'number,labels']);
+    return (JSON.parse(out) as { number: number; labels: { name: string }[] }[]).map((i) => ({ number: i.number, labels: i.labels.map((l) => l.name) }));
+  }
+
   async comment(repo: string, issue: number, body: string): Promise<void> {
     await this.gh(['issue', 'comment', String(issue), '-R', repo, '--body-file', '-'], body);
   }
@@ -105,6 +111,9 @@ export class DryRunGitHub implements GitHub {
 
   getIssue(repo: string, issue: number) {
     return this.inner.getIssue(repo, issue);
+  }
+  listIssues(repo: string, label: string) {
+    return this.inner.listIssues(repo, label);
   }
   private record(msg: string) {
     this.writes.push(msg);

@@ -40,6 +40,7 @@ export interface PipelineContext {
   store: RunStore;
   worktree: string;
   limits: { specRevisions: number; buildRounds: number };
+  autoApproveSpec?: boolean;
 }
 
 export type PipelineResult = 'waiting' | 'done' | 'stuck' | 'paused';
@@ -174,7 +175,12 @@ export async function runPipeline(deps: PipelineDeps, ctx: PipelineContext): Pro
         }
 
         case 'await_approval': {
-          const decision = parseApproval(issue.comments, state.specCommentAt ?? deps.now(), ctx.approverLogin);
+          let decision = parseApproval(issue.comments, state.specCommentAt ?? deps.now(), ctx.approverLogin);
+          if (!decision && ctx.autoApproveSpec) {
+            decision = { kind: 'approve' };
+            await github.comment(ctx.repo, ctx.issue, `${MARKER}
+🤖 Spec aprobada automáticamente (auto_approve_spec en apps.yml). Empiezo a construir.`);
+          }
           if (!decision) {
             log(`Esperando /approve o /revise de ${ctx.approverLogin} en #${ctx.issue}.`);
             return 'waiting';

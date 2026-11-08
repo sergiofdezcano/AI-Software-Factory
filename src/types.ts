@@ -97,6 +97,7 @@ export interface AppConfig {
 export interface AppEntry {
   repo: string; // owner/name
   path: string; // clon local
+  auto_approve_spec?: boolean; // true: la spec no espera /approve
 }
 
 export interface AppsFile {
