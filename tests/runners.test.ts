@@ -31,6 +31,8 @@ describe('ClaudeRunner', () => {
     expect(a[a.indexOf('--max-turns') + 1]).toBe('40');
     expect(JSON.parse(a[a.indexOf('--json-schema') + 1]).required).toEqual(['level', 'reason']);
     expect(a[a.indexOf('--disallowedTools') + 1]).toContain('Edit');
+    expect(a).toContain('--strict-mcp-config');
+    expect(JSON.parse(a[a.indexOf('--mcp-config') + 1])).toEqual({ mcpServers: {} });
   });
 
   it('en modo escritura permite editar pero nunca push ni gh', async () => {

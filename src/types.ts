@@ -133,5 +133,5 @@ export interface RunState {
   findings?: { kept: Finding[]; dropped: { finding: Finding; reason: string }[] };
   verdict?: Verdict;
   risk?: RiskAssessment & { source: 'rules' | 'classifier' };
-  outcome?: { kind: 'merged' | 'pr' | 'stuck'; url?: string; reason?: string };
+  outcome?: { kind: 'merged' | 'pr' | 'stuck'; url?: string; reason?: string; announced?: boolean };
 }
