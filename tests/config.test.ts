@@ -32,3 +32,11 @@ describe('config', () => {
     expect(() => loadAppConfig(dir)).toThrow(/app-config/);
   });
 });
+
+describe('FACTORY_APPS_DIR', () => {
+  it('sustituye la ruta local de cada app', () => {
+    const apps = { approver_login: 's', apps: { landing: { repo: 'o/l', path: 'C:/x/landing' } } };
+    expect(getApp(apps, 'landing', { FACTORY_APPS_DIR: '/srv/apps' }).path).toBe('/srv/apps/landing');
+    expect(getApp(apps, 'landing', {}).path).toBe('C:/x/landing');
+  });
+});

@@ -25,7 +25,7 @@ export interface CodexRunnerOptions {
   bin?: string;
 }
 
-// Revisor de otra familia de modelos. Siempre en sandbox de solo lectura.
+// Agente de otra familia de modelos: revisor (solo lectura) o reserva de Claude (workspace-write).
 export class CodexRunner implements AgentRunner {
   readonly name: string;
   private exec: Exec;
@@ -36,13 +36,14 @@ export class CodexRunner implements AgentRunner {
   }
 
   async run(call: AgentCall): Promise<AgentOutput> {
-    if (call.mode !== 'read') throw new AgentError('CodexRunner solo se usa en modo solo lectura');
+    // write: puede editar el worktree pero no tiene red; los commits y el push los hace la fábrica.
+    const sandbox = call.mode === 'write' ? 'workspace-write' : 'read-only';
     const dir = mkdtempSync(join(tmpdir(), 'factory-codex-'));
     try {
       const schemaFile = join(dir, 'schema.json');
       const outFile = join(dir, 'out.json');
       writeFileSync(schemaFile, JSON.stringify(toOpenAISchema(loadSchema(call.schema))));
-      const args = ['exec', '--sandbox', 'read-only', '--ephemeral', '--skip-git-repo-check', '--color', 'never', '-C', call.cwd, '--output-schema', schemaFile, '-o', outFile];
+      const args = ['exec', '--sandbox', sandbox, '--ephemeral', '--skip-git-repo-check', '--color', 'never', '-C', call.cwd, '--output-schema', schemaFile, '-o', outFile];
       if (this.opts.model) args.push('-m', this.opts.model);
       args.push('-');
       const r = await this.exec(this.opts.bin ?? 'codex', args, { cwd: call.cwd, input: call.prompt, timeoutMs: call.timeoutMs });

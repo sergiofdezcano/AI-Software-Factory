@@ -38,6 +38,15 @@ npm run factory -- watch --once              # una sola pasada
 
 En `runs/<app>-<issue>/` queda todo: el prompt exacto y la salida de cada agente, los controles, los hallazgos verificados y descartados, y las capturas en `evidence/`.
 
+## Servidor 24/7 y Telegram
+
+La fábrica corre como servicio en un LXC de Proxmox y se le piden cosas por Telegram a través de Hermes. Diseño: `docs/superpowers/specs/2026-11-08-factory-24x7-design.md`.
+
+- `deploy/HERMES-RUNBOOK.md`: pasos para que Hermes cree e instale el LXC (`create-lxc.sh`, `install.sh`, `ai-factory.service`).
+- `integrations/hermes/ai-factory/SKILL.md`: skill de Hermes para encargar tareas y consultar su estado (solo issues).
+- Con `FACTORY_TELEGRAM_BOT_TOKEN` y `FACTORY_TELEGRAM_CHAT_ID`, la fábrica avisa de spec lista, PR, merge, atascos y pausas.
+- Reserva cruzada: si Claude se queda sin cuota, Codex hace ese paso (y al revés). La revisión de seguridad la hace Codex.
+
 ## Requisitos
 
 - Node 24, `gh` autenticado, `claude` (Claude Code) y `codex` (Codex CLI con `codex login` de ChatGPT).

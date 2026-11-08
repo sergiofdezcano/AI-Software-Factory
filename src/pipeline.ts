@@ -29,6 +29,7 @@ export interface PipelineDeps {
   agents: Agents;
   now: () => string;
   log: (msg: string) => void;
+  notify?: (msg: string) => Promise<void>; // avisos al usuario (Telegram); opcional
 }
 
 export interface PipelineContext {
@@ -117,10 +118,14 @@ export async function runPipeline(deps: PipelineDeps, ctx: PipelineContext): Pro
     }
   }
 
+  const issueUrl = `https://github.com/${ctx.repo}/issues/${ctx.issue}`;
+  const notify = (msg: string) => (deps.notify ? deps.notify(`${msg}\n${issueUrl}`) : Promise.resolve());
+
   async function fail(reason: string): Promise<PipelineResult> {
     state.outcome = { kind: 'stuck', reason };
     go('stuck');
     await github.setStatus(ctx.repo, ctx.issue, 'factory:stuck');
+    await notify(`🛑 #${ctx.issue} atascado: ${reason.split('\n')[0]}`);
     await github.comment(ctx.repo, ctx.issue, `${MARKER}\n🛑 La fábrica se ha detenido.\n\n${reason}\n\nEl worktree sigue en \`${worktree}\` y el registro en \`${store.dir}\`.`);
     return 'stuck';
   }
@@ -169,6 +174,7 @@ export async function runPipeline(deps: PipelineDeps, ctx: PipelineContext): Pro
           state.spec = spec;
           state.specCommentAt = deps.now();
           await github.comment(ctx.repo, ctx.issue, specToMarkdown(spec, state.specRevisions + 1));
+          await notify(`📝 Spec lista para #${ctx.issue}: ${spec.title}${ctx.autoApproveSpec ? ' (aprobada automáticamente)' : '. Responde /approve o /revise en el issue.'}`);
           await github.setStatus(ctx.repo, ctx.issue, 'factory:awaiting-spec');
           go('await_approval');
           break;
@@ -360,9 +366,11 @@ export async function runPipeline(deps: PipelineDeps, ctx: PipelineContext): Pro
             await github.mergePR(ctx.repo, url);
             state.outcome = { kind: 'merged', url };
             await github.setStatus(ctx.repo, ctx.issue, 'factory:merged');
+            await notify(`✅ Mergeado #${ctx.issue}: ${state.spec!.title}\n${url}`);
             await github.comment(ctx.repo, ctx.issue, `${MARKER}\n✅ Cambio de bajo riesgo mergeado automáticamente: ${url}`);
           } else {
             await github.setStatus(ctx.repo, ctx.issue, 'factory:pr');
+            await notify(`👀 PR para revisar #${ctx.issue}: ${state.spec!.title}\n${url}\nMotivo: ${blockers.join(' ')}`);
             await github.comment(
               ctx.repo,
               ctx.issue,
@@ -389,6 +397,7 @@ export async function runPipeline(deps: PipelineDeps, ctx: PipelineContext): Pro
       state.paused = true;
       save();
       await github.setStatus(ctx.repo, ctx.issue, 'factory:paused');
+      await notify(`⏸️ #${ctx.issue} en pausa: sin cuota en Claude ni en Codex. Se reintenta solo.`);
       log(`Pausado por límite de uso: ${e.message}`);
       return 'paused';
     }

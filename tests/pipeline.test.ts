@@ -362,3 +362,23 @@ describe("sincronización con la rama base", () => {
     expect(checks.ran).toEqual(["check", "screenshots"]);
   });
 });
+
+describe('avisos', () => {
+  it('avisa de la spec, de la entrega y de los atascos', async () => {
+    const sent: string[] = [];
+    const d = { ...deps(makeAgents()), notify: async (m: string) => void sent.push(m) };
+    await runPipeline(d, ctx);
+    expect(sent[0]).toMatch(/Spec lista/);
+    gh.reply('/approve');
+    await runPipeline(d, ctx);
+    expect(sent.at(-1)).toMatch(/Mergeado/);
+    expect(sent.at(-1)).toContain('https://github.com/o/r/pull/1');
+  });
+
+  it('avisa si se pausa por cuota', async () => {
+    const sent: string[] = [];
+    const agents = makeAgents({ specWriter: [() => { throw new QuotaError('usage limit'); }] });
+    expect(await runPipeline({ ...deps(agents), notify: async (m) => void sent.push(m) }, ctx)).toBe('paused');
+    expect(sent[0]).toMatch(/pausa/i);
+  });
+});

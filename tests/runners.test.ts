@@ -81,9 +81,14 @@ describe('CodexRunner', () => {
     expect(calls[0].input).toBe('hola');
   });
 
-  it('se niega a escribir', async () => {
-    const { exec } = fakeExec(() => ({}));
-    await expect(new CodexRunner({ exec }).run({ ...call, mode: 'write' })).rejects.toThrow(/solo lectura/);
+  it('en modo escritura usa workspace-write (sin red ni push)', async () => {
+    const { exec, calls } = fakeExec((_c, args) => {
+      writeFileSync(args[args.indexOf('-o') + 1], '{"summary":"s","criteria":[],"notes":""}');
+      return {};
+    });
+    await new CodexRunner({ exec }).run({ ...call, schema: 'build-report', mode: 'write' });
+    const a = calls[0].args;
+    expect(a[a.indexOf('--sandbox') + 1]).toBe('workspace-write');
   });
 
   it('detecta límite de uso', async () => {
