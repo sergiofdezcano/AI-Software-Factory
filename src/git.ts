@@ -9,7 +9,12 @@ export interface Git {
   commitAll(worktree: string, message: string): Promise<boolean>;
   push(worktree: string, branch: string): Promise<void>;
   removeWorktree(repoPath: string, worktree: string): Promise<void>;
+  // Trae lo último de la rama base y lo mezcla. Si hay conflictos, deja el merge a medias
+  // (con marcadores) para que el builder los resuelva, y devuelve los archivos afectados.
+  syncWithBase(worktree: string, base: string): Promise<{ conflicts: string[] }>;
 }
+
+const lines = (s: string) => s.split('\n').map((l) => l.trim()).filter(Boolean);
 
 export class GitCli implements Git {
   constructor(private exec: Exec = realExec) {}
@@ -24,6 +29,21 @@ export class GitCli implements Git {
     if (existsSync(worktree)) return; // reanudación
     await this.git(repoPath, ['fetch', 'origin', base]);
     await this.git(repoPath, ['worktree', 'add', '-B', branch, worktree, `origin/${base}`]);
+  }
+
+  async syncWithBase(worktree: string, base: string) {
+    // Conflictos pendientes de una vuelta anterior, o marcadores que se colaron en un commit.
+    const unmerged = lines(await this.git(worktree, ['diff', '--name-only', '--diff-filter=U']));
+    if (unmerged.length) return { conflicts: unmerged };
+    const markers = await this.exec('git', ['grep', '-l', '-E', '^(<<<<<<<|>>>>>>>) '], { cwd: worktree, timeoutMs: 60_000 });
+    if (markers.exitCode === 0 && markers.stdout.trim()) return { conflicts: lines(markers.stdout) };
+
+    await this.git(worktree, ['fetch', 'origin', base]);
+    const merge = await this.exec('git', ['merge', '--no-edit', `origin/${base}`], { cwd: worktree, timeoutMs: 300_000 });
+    if (merge.exitCode === 0) return { conflicts: [] };
+    const conflicts = lines(await this.git(worktree, ['diff', '--name-only', '--diff-filter=U']));
+    if (!conflicts.length) throw new Error(`git merge origin/${base} falló: ${merge.stderr.trim()}`);
+    return { conflicts };
   }
 
   async changedFiles(worktree: string, base: string) {
@@ -83,6 +103,9 @@ export class DryRunGit implements Git {
   }
   commitAll(w: string, m: string) {
     return this.inner.commitAll(w, m);
+  }
+  syncWithBase(w: string, b: string) {
+    return this.inner.syncWithBase(w, b);
   }
   async push(_w: string, branch: string) {
     this.log(`[dry-run] push de ${branch}`);

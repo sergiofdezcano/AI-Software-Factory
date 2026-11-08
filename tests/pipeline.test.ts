@@ -69,6 +69,10 @@ class FakeGit implements Git {
   async push() {
     this.pushed = true;
   }
+  conflictsQueue: string[][] = [];
+  async syncWithBase() {
+    return { conflicts: this.conflictsQueue.shift() ?? [] };
+  }
   async removeWorktree() {
     this.removed = true;
   }
@@ -344,5 +348,17 @@ describe('entrega robusta', () => {
     expect(await runPipeline(deps(agents), ctx)).toBe('done');
     expect(gh.comments.length).toBe(before);
     expect(gh.merged).toHaveLength(1);
+  });
+});
+
+describe("sincronización con la rama base", () => {
+  it("si hay conflictos con main, el builder los resuelve antes de los controles", async () => {
+    ctx.autoApproveSpec = true;
+    git.conflictsQueue = [["tests/e2e/site.spec.js"]];
+    const agents = makeAgents();
+    expect(await runPipeline(deps(agents), ctx)).toBe("done");
+    expect(agents.builder.calls).toHaveLength(2);
+    expect(agents.builder.calls[1].prompt).toContain("tests/e2e/site.spec.js");
+    expect(checks.ran).toEqual(["check", "screenshots"]);
   });
 });
