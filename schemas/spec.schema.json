@@ -1,0 +1,53 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["title", "summary", "stories", "must_respect", "acceptance", "out_of_scope", "open_questions", "brain_updates"],
+  "properties": {
+    "title": { "type": "string", "minLength": 1 },
+    "summary": { "type": "string", "minLength": 1 },
+    "stories": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["action", "conditions", "permissions", "expected_result"],
+        "properties": {
+          "action": { "type": "string", "minLength": 1 },
+          "conditions": { "type": "string" },
+          "permissions": { "type": "string" },
+          "expected_result": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "must_respect": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["path", "reason"],
+        "properties": { "path": { "type": "string" }, "reason": { "type": "string" } }
+      }
+    },
+    "acceptance": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "criterion", "proof", "evidence"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "criterion": { "type": "string", "minLength": 1 },
+          "proof": { "enum": ["test", "command", "screenshot"] },
+          "evidence": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "out_of_scope": { "type": "array", "items": { "type": "string" } },
+    "open_questions": { "type": "array", "items": { "type": "string" } },
+    "brain_updates": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["path", "change"],
+        "properties": { "path": { "type": "string" }, "change": { "type": "string" } }
+      }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+# Apps sobre las que trabaja la fábrica.
+# approver_login: usuario de GitHub cuyos /approve y /revise cuentan.
+approver_login: sergiofdezcano
+apps:
+  landing:
+    repo: sergiofdezcano/Serg4Cano-Landing-Page
+    path: C:/Users/sergi/Serg4Cano-Landing-Page
