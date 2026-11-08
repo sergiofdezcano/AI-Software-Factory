@@ -1,0 +1,21 @@
+[Unit]
+Description=AI Software Factory (factory watch)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=factory
+WorkingDirectory=/opt/ai-factory
+EnvironmentFile=/etc/ai-factory/env
+Environment=PATH=/home/factory/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/home/factory
+ExecStart=/opt/ai-factory/node_modules/.bin/tsx src/cli.ts watch --interval 120
+Restart=always
+RestartSec=30
+# Un run puede durar más de una hora (builder + controles); no cortarlo al parar a medias.
+TimeoutStopSec=60
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target
