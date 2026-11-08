@@ -7,11 +7,10 @@ import { ShellChecks } from './checks.ts';
 import { getApp, loadAppConfig, loadApps } from './config.ts';
 import { DryRunGit, GitCli } from './git.ts';
 import { DryRunGitHub, GhCli, TRIGGER_LABEL, type GitHub } from './github.ts';
-import { runPipeline, type Agents, type PipelineResult } from './pipeline.ts';
+import { makeAgents } from './agents.ts';
+import { notifierFromEnv } from './notify.ts';
+import { runPipeline, type PipelineResult } from './pipeline.ts';
 import { MARKER } from './render.ts';
-import { ClaudeRunner } from './runners/claude.ts';
-import { CodexRunner } from './runners/codex.ts';
-import { FallbackRunner } from './runners/fallback.ts';
 import { RunStore } from './state.ts';
 import type { AppsFile } from './types.ts';
 import { pendingIssues } from './watch.ts';
@@ -26,21 +25,11 @@ const USAGE = `Uso:
 Modelos (variables de entorno opcionales):
   FACTORY_MODEL_BIG     por defecto "opus"   (spec writer, builder, approver, riesgo)
   FACTORY_MODEL_REVIEW  por defecto "sonnet" (revisor de código y reserva del de seguridad)
-  FACTORY_MODEL_CODEX   por defecto el de ~/.codex/config.toml (revisor de seguridad)`;
+  FACTORY_MODEL_CODEX   por defecto el de ~/.codex/config.toml (seguridad y reserva de todos los roles)
 
-function makeAgents(onFallback: (note: string) => void): Agents {
-  const big = process.env.FACTORY_MODEL_BIG ?? 'opus';
-  const review = process.env.FACTORY_MODEL_REVIEW ?? 'sonnet';
-  return {
-    specWriter: new ClaudeRunner({ model: big }),
-    builder: new ClaudeRunner({ model: big }),
-    reviewerCode: new ClaudeRunner({ model: review }),
-    // Codex aporta otra familia de modelos; si no tiene cuota, revisa Claude y queda anotado.
-    reviewerSecurity: new FallbackRunner(new CodexRunner({ model: process.env.FACTORY_MODEL_CODEX }), new ClaudeRunner({ model: review }), onFallback),
-    approver: new ClaudeRunner({ model: big }),
-    riskClassifier: new ClaudeRunner({ model: big }),
-  };
-}
+Otras variables:
+  FACTORY_APPS_DIR            carpeta con los clones de las apps (<dir>/<app>), p. ej. /srv/apps
+  FACTORY_TELEGRAM_BOT_TOKEN  y FACTORY_TELEGRAM_CHAT_ID: avisos por Telegram`;
 
 // Un solo run a la vez (la v1 no tiene paralelismo).
 function acquireLock(file: string): () => void {
@@ -70,18 +59,22 @@ async function runOne(apps: AppsFile, appName: string, issue: number, dry: boole
   const realGitHub = new GhCli();
   const github: GitHub = dry ? new DryRunGitHub(realGitHub, log) : realGitHub;
   const notes: string[] = [];
+  const notifier = dry ? undefined : notifierFromEnv();
   log(`${appName}#${issue}: empiezo`);
   const result = await runPipeline(
     {
       github,
       git: dry ? new DryRunGit(new GitCli(), log) : new GitCli(),
       checks: new ShellChecks({ FACTORY_EVIDENCE_DIR: join(runDir, 'evidence') }),
-      agents: makeAgents((n) => {
-        notes.push(n);
-        log(n);
+      agents: makeAgents({
+        onFallback: (n) => {
+          notes.push(n);
+          log(n);
+        },
       }),
       now: () => new Date().toISOString(),
       log,
+      notify: notifier ? (m) => notifier.send(m) : undefined,
     },
     {
       repo: app.repo,
@@ -96,7 +89,9 @@ async function runOne(apps: AppsFile, appName: string, issue: number, dry: boole
     },
   );
   if (notes.length) {
-    await github.comment(app.repo, issue, `${MARKER}\nℹ️ Avisos de esta ejecución:\n${[...new Set(notes)].map((n) => `- ${n}`).join('\n')}`);
+    const text = [...new Set(notes)].map((n) => `- ${n}`).join('\n');
+    await github.comment(app.repo, issue, `${MARKER}\nℹ️ Avisos de esta ejecución:\n${text}`);
+    await notifier?.send(`ℹ️ ${appName}#${issue}, cambio de modelo por cuota:\n${text}`);
   }
   log(`${appName}#${issue}: ${result}`);
   return result;

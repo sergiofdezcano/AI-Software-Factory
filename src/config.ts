@@ -15,10 +15,12 @@ export function loadApps(file: string): AppsFile {
   return data as AppsFile;
 }
 
-export function getApp(apps: AppsFile, name: string): AppEntry {
+// FACTORY_APPS_DIR (p. ej. /srv/apps en el servidor) sustituye la ruta local de apps.yml por <dir>/<app>.
+export function getApp(apps: AppsFile, name: string, env: Record<string, string | undefined> = process.env): AppEntry {
   const app = apps.apps[name];
   if (!app) throw new Error(`App desconocida: "${name}". Registradas: ${Object.keys(apps.apps).join(', ')}`);
-  return app;
+  const dir = env.FACTORY_APPS_DIR;
+  return dir ? { ...app, path: `${dir.replace(/[\/]+$/, '')}/${name}` } : app;
 }
 
 export function loadAppConfig(repoPath: string): AppConfig {
