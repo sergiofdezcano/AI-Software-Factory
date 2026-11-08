@@ -225,6 +225,15 @@ export async function runPipeline(deps: PipelineDeps, ctx: PipelineContext): Pro
         }
 
         case 'checks': {
+          // Main puede haber cambiado mientras se construía (otras tareas mergeadas).
+          const { conflicts } = await git.syncWithBase(worktree, config.default_branch);
+          if (conflicts.length) {
+            state.builderFeedback = [
+              `La rama tiene conflictos con ${config.default_branch} (ya traído y mezclado) en: ${conflicts.join(', ')}. Resuélvelos conservando los cambios de ambos lados, quita los marcadores <<<<<<< ======= >>>>>>> y cierra el merge con git add y git commit.`,
+            ];
+            go('build');
+            break;
+          }
           const results: CheckResult[] = [await checks.run('check', config.check, worktree, timeouts.check)];
           if (config.screenshots) results.push(await checks.run('screenshots', config.screenshots, worktree, timeouts.check));
           for (const a of state.spec!.acceptance) {
